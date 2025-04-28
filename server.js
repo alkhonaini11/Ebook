@@ -1,3 +1,4 @@
+console.log("🚀 السكربت بدأ بنجاح!");
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
