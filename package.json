@@ -1,0 +1,13 @@
+{
+  "name": "ebook_downloader",
+  "version": "1.0.0",
+  "description": "سكربت سحب الكتاب وتحويله إلى PDF مع النصوص والصور",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.3.8",
+    "pdfkit": "^0.13.0"
+  }
+}
