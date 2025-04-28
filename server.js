@@ -1,79 +1,69 @@
-console.log("🚀 السكربت بدأ بنجاح!");
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const path = require('path');
 const PDFDocument = require('pdfkit');
 
 (async () => {
+  console.log("🚀 السكربت بدأ بنجاح!");
+
   const browser = await puppeteer.launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
-    ]
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
   const page = await browser.newPage();
+  await page.goto('https://academy.bankruptcy.gov.sa/ebook/bankruptcy_practitioners/Book_Folder_U15_V2.0/index.html#/reader', { waitUntil: 'networkidle0' });
 
-  await page.goto('https://academy.bankruptcy.gov.sa/ebook/bankruptcy_practitioners/Book_Folder_U15_V2.0/index.html#/reader', {
-    waitUntil: 'networkidle2',
-    timeout: 0
-  });
+  const doc = new PDFDocument();
+  const writeStream = fs.createWriteStream('الكتاب_الإلكتروني_final.pdf');
+  doc.pipe(writeStream);
 
-  await new Promise(resolve => setTimeout(resolve, 5000)); // ننتظر أول تحميل
+  let pageNum = 1;
 
-  console.log('🚀 بدأ السحب...');
+  while (true) {
+    try {
+      await page.waitForSelector('#epubContent', { timeout: 5000 });
 
-  if (!fs.existsSync('./images')) {
-    fs.mkdirSync('./images');
-  }
-
-  const doc = new PDFDocument({ autoFirstPage: false });
-  const pdfStream = fs.createWriteStream('الكتاب_الإلكتروني_final.pdf');
-  doc.pipe(pdfStream);
-
-  const totalChapters = 5; // عدل حسب عدد الصفحات
-
-  for (let i = 1; i <= totalChapters; i++) {
-    console.log(`📖 معالجة الفصل ${i}`);
-
-    const chapterText = await page.$eval('#epubContent', el => el.innerText);
-
-    doc.addPage({ size: 'A4', margin: 50 });
-    doc.font('Times-Roman').fontSize(18).text(`فصل ${i}`, { align: 'center' });
-    doc.moveDown();
-    doc.font('Times-Roman').fontSize(14).text(chapterText, { align: 'right' });
-    doc.moveDown();
-
-    const images = await page.$$eval('#epubContent img', imgs => imgs.map(img => img.src));
-
-    for (let j = 0; j < images.length; j++) {
-      const imgURL = images[j];
-      const imgPath = path.resolve(__dirname, 'images', `chapter${i}_img${j}.png`);
-      const viewSource = await page.goto(imgURL);
-      fs.writeFileSync(imgPath, await viewSource.buffer());
-      
-      doc.addPage({ size: 'A4', margin: 50 });
-      doc.image(imgPath, {
-        fit: [500, 700],
-        align: 'center',
-        valign: 'center'
+      // سحب النصوص والصور
+      const { textContent, imgSrcs } = await page.evaluate(() => {
+        const text = document.querySelector('#epubContent')?.innerText || '';
+        const images = Array.from(document.querySelectorAll('#epubContent img')).map(img => img.src);
+        return { textContent: text, imgSrcs: images };
       });
-      doc.moveDown();
-    }
 
-    await page.keyboard.press('ArrowLeft');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+      // أضف النص للـ PDF
+      doc.addPage();
+      doc.fontSize(14).text(textContent, { align: 'right' });
+
+      // أضف الصور للـ PDF
+      for (let img of imgSrcs) {
+        try {
+          const imageBuffer = await page.goto(img).then(res => res.buffer());
+          doc.addPage();
+          doc.image(imageBuffer, { fit: [500, 700], align: 'center', valign: 'center' });
+        } catch (e) {
+          console.log(`⚠️ فشل تحميل صورة: ${img}`);
+        }
+      }
+
+      console.log(`✅ أنهيت صفحة ${pageNum}`);
+
+      // اضغط التالي
+      const nextButton = await page.$('#nextPage');
+      if (!nextButton) break;
+
+      await nextButton.click();
+      await page.waitForTimeout(3000); // انتظر تحميل الصفحة
+
+      pageNum++;
+
+    } catch (e) {
+      console.log("🚪 مافي صفحات أكثر، وقف السحب");
+      break;
+    }
   }
 
   doc.end();
   await browser.close();
+  console.log("📚 تم إنشاء الكتاب بنجاح!");
 
-  console.log('✅ تم إنشاء ملف PDF بالكامل!');
 })();
